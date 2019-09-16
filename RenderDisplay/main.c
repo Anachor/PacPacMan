@@ -9,7 +9,13 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
+
 #include <stdlib.h>
+
+// For Random Number
+#include <time.h>
+#include <stdlib.h>
+
 
 volatile unsigned char background[16][16] = {
 	"################",
@@ -30,6 +36,63 @@ volatile unsigned char background[16][16] = {
 	"################"
 };
 
+unsigned char endScreen[16][16] = {
+	"################",
+	"................",
+	"###.###.#.#.###.",
+	"#...#.#.###.#...",
+	"#.#.###.#.#.###.",
+	"#.#.#.#.#.#.#...",
+	"###.#.#.#.#.###.",
+	"................",
+	"................",
+	"###.#.#.###.###.",
+	"#.#.#.#.#...#.#.",
+	"#.#.#.#.###.###.",
+	"#.#.#.#.#...##..",
+	"###.###.###.#.#.",
+	"................",
+	"################"
+};
+
+unsigned char winScreen[16][16] = {
+	"################",
+	"................",
+	".#..#.####.#..#.",
+	".#..#.#..#.#..#.",
+	".####.#..#.#..#.",
+	"..##..#..#.#..#.",
+	"..##..####.####.",
+	"................",
+	"................",
+	".#..#.###.#...#.",
+	".#..#..#..##..#.",
+	".#..#..#..#.#.#.",
+	".####..#..#..##.",
+	".#..#.###.#...#.",
+	"................",
+	"################"
+};
+
+unsigned char startScreen[16][16] = {
+	".####.####.####.",
+	".#..#.#..#.#....",
+	".####.####.#....",
+	".#....#..#.#....",
+	".#....#..#.####.",
+	"................",
+	".####.####.####.",
+	".#..#.#..#.#....",
+	".####.####.#....",
+	".#....#..#.#....",
+	".#....#..#.####.",
+	"................",
+	".#..#.####.#..#.",
+	".####.#..#.##.#.",
+	".#..#.####.#.##.",
+	".#..#.#..#.#..#.",
+};
+
 int ZERO = 0;
 const int BLINK_RANGE = 128;
 const int RENDER_DELAY_US = 25;
@@ -43,11 +106,12 @@ const int dy[4] = { 0, 1, 0, -1};
 
 volatile int foodBlinkState;
 volatile int gameOver;
+volatile int gameWin;
 volatile int buzzerRemainingTime;
 
 int px = 13, py = 8;
-const int gx[GHOST_COUNT] = {13};
-const int gy[GHOST_COUNT] = {5};
+int gx[GHOST_COUNT] = {13};
+int gy[GHOST_COUNT] = {5};
 
 
 void reset() {
@@ -124,9 +188,6 @@ void makeBoard() {
 }
 
 void displayBoard() {
-	if (gameOver) {
-		return ;
-	}
 	for (int i=0; i<16; i++) {
 		setBoardCommon(i);
 		for (int j=0; j<16; j++) {
@@ -231,7 +292,67 @@ void ghostMove(int id, int dir) {
 }
 
 
+void displayStartScreen()
+{
+	for (int i=0; i<16; i++) {
+		setBoardCommon(i);
+		for (int j=0; j<16; j++) {
+			if (startScreen[i][j] == '.')			continue;
+			else if (startScreen[i][j] == '#') {
+				setBoardRed(j);
+			}
+			_delay_us(RENDER_DELAY_US);
+			reset();
+		}
+	}
+}
 
+void displayGameOverScreen()
+{
+	for (int i=0; i<16; i++) {
+		setBoardCommon(i);
+		for (int j=0; j<16; j++) {
+			if (endScreen[i][j] == '.')			continue;
+			else if (endScreen[i][j] == '#') {
+				setBoardRed(j);
+			}
+			_delay_us(RENDER_DELAY_US);
+			reset();
+		}
+	}
+}
+
+
+void displayWinScreen()
+{
+	for (int i=0; i<16; i++) {
+		setBoardCommon(i);
+		for (int j=0; j<16; j++) {
+			if (winScreen[i][j] == '.')			continue;
+			else if (winScreen[i][j] == '#') {
+				setBoardRed(j);
+			}
+			_delay_us(RENDER_DELAY_US);
+			reset();
+		}
+	}
+}
+
+
+int isFoodLeft() {
+	for (int i=0; i<16; i++) {
+		for (int j=0; j<16; j++) {
+			if (background[i][j] == 'F')			return 1;
+		}
+	}
+	return 0;
+}
+
+int randomInt(int max)
+{
+	int r = rand();
+	return (r % max);
+}
 
 int main(void)
 {
@@ -241,8 +362,15 @@ int main(void)
 	ledMatrixInit();
 	controlInit();
 	buzzerInit();
-
+	
+	//Random Init
+	srand(time(NULL));   
     /* Replace with your application code */
+	
+	for (int i=0; i<200; i++)
+	{
+		displayStartScreen();
+	}
 	
 	while(1) {
 		int direction = PINB & 0x03;
@@ -252,6 +380,16 @@ int main(void)
 			displayBoard();
 			buzz();
 		}
-	}																			
+		if (!isFoodLeft())	gameWin = 1;
+		if(gameOver || gameWin)		break;
+	}
+	
+	while(gameOver) {
+		displayGameOverScreen();
+	}
+	
+	while(gameWin) {
+		displayWinScreen();
+	}	
 }
 
