@@ -9,12 +9,7 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
-
-volatile const int BLINK_RANGE = 128;
-volatile int foodBlinkState;
-volatile int dx[4] = {-1, 0, 1,  0};
-volatile int dy[4] = { 0, 1, 0, -1};
-	
+#include <stdlib.h>
 
 volatile unsigned char background[16][16] = {
 	"################",
@@ -35,12 +30,25 @@ volatile unsigned char background[16][16] = {
 	"################"
 };
 
-volatile unsigned char board[16][16];
-#define GHOST_COUNT 1
-int px = 13, py = 8;
+int ZERO = 0;
+const int BLINK_RANGE = 128;
+const int RENDER_DELAY_US = 25;
+const int FRAME_RATE = 12;			/// RENDER_DELAY_US * FRAME_RATE should be ~250
+const int BUZZER_DURATION = 5;
 
+const int dx[4] = {-1, 0, 1,  0};
+const int dy[4] = { 0, 1, 0, -1};
+	
+#define GHOST_COUNT 1	
+
+volatile int foodBlinkState;
+volatile int gameOver;
+volatile int buzzerRemainingTime;
+
+int px = 13, py = 8;
 const int gx[GHOST_COUNT] = {13};
 const int gy[GHOST_COUNT] = {5};
+
 
 void reset() {
 	PORTC |= 0b11000000;
@@ -71,8 +79,17 @@ void ledMatrixInit()
 	
 	DDRA = 0b11111111;
 	DDRC = 0b11001111;
-	reset();
-		
+	PORTC |= 0b11000000;
+}
+
+void controlInit() {
+	// B0, B1
+	DDRB &= 0b11111100;
+}
+
+void buzzerInit() {
+	// B2
+	DDRB |= 0b00000100;
 }
 
 void setBoardCommon(unsigned char row) {
@@ -94,10 +111,8 @@ void setBoardGreen(unsigned char column) {
 	PORTA |= (0xF0 & (column << 4));
 }
 
-const int RENDER_DELAY = 30;
-
-
-void MakeBoard() {
+volatile unsigned char board[16][16];
+void makeBoard() {
 	for (int i=0; i<16; i++)
 		for (int j=0; j<16; j++)
 			board[i][j] = background[i][j];
@@ -108,13 +123,16 @@ void MakeBoard() {
 	board[gx[i]][gy[i]] = board[gx[i]+1][gy[i]] = board[gx[i]][gy[i]+1] = board[gx[i]+1][gy[i]+1] =  '1';
 }
 
-void DisplayBoard() {
+void displayBoard() {
+	if (gameOver) {
+		return ;
+	}
 	for (int i=0; i<16; i++) {
 		setBoardCommon(i);
 		for (int j=0; j<16; j++) {
 			if (board[i][j] == '.')			continue;
 			else if (board[i][j] == '#') {
-				setBoardRed(j);
+				 setBoardRed(j);
 			}
 			else if (board[i][j] == '1') {
 				setBoardGreen(j);
@@ -130,16 +148,90 @@ void DisplayBoard() {
 				setBoardRed(j);
 				
 			}
-			_delay_us(RENDER_DELAY);
+			_delay_us(RENDER_DELAY_US);
 			reset();
 		}	
 	}
 	
 }
 
-void MovePacmac(int dir) {
-	int nx = px + 
+int clash(int px, int py, int gx, int gy) {
+	for (int i=0; i<2; i++)
+		for (int j=0; j<2; j++)
+			for (int k=0; k<2; k++)
+				for (int l=0; l<2; l++)
+					if (px+i==gx+k && py+j == gy+l)
+						return 1;
+	return 0;
 }
+
+void movePacman(int dir) {
+	int nx = px + dx[dir];
+	int ny = py + dy[dir];
+	if (background[nx][ny] == '#' || background[nx+1][ny] == '#' ||
+		background[nx][ny+1] == '#' || background[nx+1][ny+1] == '#')		return;
+	
+	for (int i=0; i<GHOST_COUNT; i++) {
+		int ggx = gx[i];
+		int ggy = gy[i];
+		if (clash(px, py, ggx, ggy)) {
+			gameOver = 1;
+			return;
+		}
+	}
+	
+	px = nx;
+	py = ny;
+	
+	if (background[nx][ny] == 'F' || background[nx][ny+1] == 'F' ||
+	background[nx+1][ny] == 'F' || background[nx+1][ny+1] == 'F') {
+		buzzerRemainingTime = BUZZER_DURATION;
+	}
+	
+	if (background[nx][ny] == 'F')		background[nx][ny] = '.';
+	if (background[nx+1][ny] == 'F')	background[nx+1][ny] = '.';
+	if (background[nx][ny+1] == 'F')	background[nx][ny+1] = '.';
+	if (background[nx+1][ny+1] == 'F')  background[nx+1][ny+1] = '.';
+}
+
+void buzz() {
+	if (buzzerRemainingTime > 0)		PORTB |= 0b00000100;
+	else								PORTB &= 0b11111011;
+	if (buzzerRemainingTime) buzzerRemainingTime--;
+}
+
+/// 0 = nothing, 1 = blocked, 2 = Pacman Fucked
+int ghostMoveResult(int id, int dir) {
+	int cx = gx[id], cy = gy[id];
+	int nx = cx + dx[dir];
+	int ny = cy + dy[dir];
+	
+	if (background[nx][ny] == '#' || background[nx+1][ny] == '#' ||
+		background[nx][ny+1] == '#' || background[nx+1][ny+1] == '#')		return 0;	
+	
+	if (clash(px, py, nx, ny))	return 2;
+	return 1;
+}
+
+void ghostMove(int id, int dir) {
+	int cx = gx[id], cy = gy[id];
+	int nx = cx + dx[dir];
+	int ny = cy + dy[dir];
+		
+	if (background[nx][ny] == '#' || background[nx+1][ny] == '#' ||
+	background[nx][ny+1] == '#' || background[nx+1][ny+1] == '#')		return;
+		
+	if (clash(px, py, nx, ny))	{
+		gameOver = 1;
+		return ;
+	}
+	
+	gx[id] = nx;
+	gy[id] = ny;
+}
+
+
+
 
 int main(void)
 {
@@ -147,12 +239,19 @@ int main(void)
 	MCUCSR |= 1 << JTD;
 
 	ledMatrixInit();
+	controlInit();
+	buzzerInit();
 
     /* Replace with your application code */
 	
 	while(1) {
-		MakeBoard();
-		DisplayBoard();
+		int direction = PINB & 0x03;
+		movePacman(direction);
+		makeBoard();
+		for (int i=0; i<FRAME_RATE; i++) {
+			displayBoard();
+			buzz();
+		}
 	}																			
 }
 
