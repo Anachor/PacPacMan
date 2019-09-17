@@ -5,7 +5,7 @@
  * Author : Monmoy
  */ 
 
-#define F_CPU 8000000
+#define F_CPU 20000000
 
 #include <avr/io.h>
 #include <util/delay.h>
@@ -20,7 +20,7 @@
 volatile unsigned char background[16][16] = {
 	"################",
 	"#.F............#",
-	"#....F......F..#",
+	"#....F.......F.#",
 	"#..#..#####..###",
 	"#..#......#....#",
 	"#..#.F....#.F..#",
@@ -95,8 +95,8 @@ unsigned char startScreen[16][16] = {
 
 int ZERO = 0;
 const int BLINK_RANGE = 128;
-const int RENDER_DELAY_US = 25;
-const int FRAME_RATE = 12;			/// RENDER_DELAY_US * FRAME_RATE should be ~250
+const int RENDER_DELAY_US = 10;
+const int FRAME_RATE = 15;			/// RENDER_DELAY_US * FRAME_RATE should be ~250
 const int BUZZER_DURATION = 5;
 
 const int dx[4] = {-1, 0, 1,  0};
@@ -108,6 +108,7 @@ volatile int foodBlinkState;
 volatile int gameOver;
 volatile int gameWin;
 volatile int buzzerRemainingTime;
+volatile int ghostEnabled;
 
 int px = 13, py = 8;
 int gx[GHOST_COUNT] = {13};
@@ -247,6 +248,10 @@ void movePacman(int dir) {
 	if (background[nx][ny] == 'F' || background[nx][ny+1] == 'F' ||
 	background[nx+1][ny] == 'F' || background[nx+1][ny+1] == 'F') {
 		buzzerRemainingTime = BUZZER_DURATION;
+		ghostEnabled = 0;
+	}
+	else {
+		ghostEnabled = 1;
 	}
 	
 	if (background[nx][ny] == 'F')		background[nx][ny] = '.';
@@ -261,6 +266,12 @@ void buzz() {
 	if (buzzerRemainingTime) buzzerRemainingTime--;
 }
 
+int randomInt(int min, int max)
+{
+	return min + (rand() % (max-min+1));
+}
+
+
 /// 0 = nothing, 1 = blocked, 2 = Pacman Fucked
 int ghostMoveResult(int id, int dir) {
 	int cx = gx[id], cy = gy[id];
@@ -274,23 +285,69 @@ int ghostMoveResult(int id, int dir) {
 	return 1;
 }
 
-void ghostMove(int id, int dir) {
+void moveGhost(int id, int dir) {
 	int cx = gx[id], cy = gy[id];
 	int nx = cx + dx[dir];
 	int ny = cy + dy[dir];
 		
 	if (background[nx][ny] == '#' || background[nx+1][ny] == '#' ||
 	background[nx][ny+1] == '#' || background[nx+1][ny+1] == '#')		return;
+	
+	gx[id] = nx;
+	gy[id] = ny;
 		
 	if (clash(px, py, nx, ny))	{
 		gameOver = 1;
 		return ;
 	}
-	
-	gx[id] = nx;
-	gy[id] = ny;
 }
 
+
+unsigned char dis[16][16];
+unsigned char q[128];
+int frontptr, backptr;
+const unsigned char INF = 255;
+
+int ghostStrategyShortestPath(int id) {
+	for (int i=0; i<16; i++)
+		for (int j=0; j<16; j++)
+			dis[i][j] = INF;
+	
+	dis[px][py] = 0;
+	frontptr = backptr = 0;
+	q[backptr++] = (px<<4)|py;
+	
+	while (frontptr < backptr) {
+		int val = q[frontptr++];
+		int x = val>>4;
+		int y = val&15;
+		
+		for (int dir = 0; dir < 4; ++dir) {
+			int nx = x+dx[dir];
+			int ny = y+dy[dir];
+			if (dis[nx][ny] < INF || 
+				background[nx][ny] == '#' || background[nx+1][ny] == '#'|| 
+				background[nx][ny+1] == '#'|| background[nx+1][ny+1] == '#')	continue;
+			dis[nx][ny] = 1 + dis[x][y];
+			q[backptr++] = (nx<<4)|ny;
+		}
+	}
+	
+	int best = INF, ans = 0; 
+	for (int dir=0; dir<4; dir++) {
+		int nx = gx[id] + dx[dir];
+		int ny = gy[id] + dy[dir];
+		if (dis[nx][ny] < best)	{
+			ans = dir;
+			best = dis[nx][ny];
+		}
+	}
+	return ans;
+}
+
+int ghostStrategy(int id) {
+	return ghostStrategyShortestPath(id);
+}
 
 void displayStartScreen()
 {
@@ -348,11 +405,6 @@ int isFoodLeft() {
 	return 0;
 }
 
-int randomInt(int max)
-{
-	int r = rand();
-	return (r % max);
-}
 
 int main(void)
 {
@@ -364,22 +416,28 @@ int main(void)
 	buzzerInit();
 	
 	//Random Init
-	srand(time(NULL));   
+	srand(time(NULL));  
     /* Replace with your application code */
 	
-	for (int i=0; i<200; i++)
-	{
+	for (int i=0; i<FRAME_RATE*10; i++) {
 		displayStartScreen();
 	}
 	
 	while(1) {
 		int direction = PINB & 0x03;
 		movePacman(direction);
+		for (int i=0; i<GHOST_COUNT; i++) {
+			if (ghostEnabled) {
+				moveGhost(i, ghostStrategy(i));
+			}
+		}
+		
 		makeBoard();
 		for (int i=0; i<FRAME_RATE; i++) {
 			displayBoard();
-			buzz();
+			//buzz();
 		}
+		
 		if (!isFoodLeft())	gameWin = 1;
 		if(gameOver || gameWin)		break;
 	}
