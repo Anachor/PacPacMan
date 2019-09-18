@@ -2,7 +2,7 @@
  * RenderDisplay.c
  *
  * Created: 15-Sep-19 5:17:23 PM
- * Author : Monmoy
+ * Author : Monmoy, Anachor
  */ 
 
 #define F_CPU 20000000
@@ -15,26 +15,6 @@
 // For Random Number
 #include <time.h>
 #include <stdlib.h>
-
-
-volatile unsigned char background[16][16] = {
-	"################",
-	"#.F............#",
-	"#....F.......F.#",
-	"#..#..#####..###",
-	"#..#......#....#",
-	"#..#.F....#.F..#",
-	"#F.#####..###..#",
-	"#.......F......#",
-	"#..............#",
-	"#.F...#F.####..#",
-	"#.....#......F.#",
-	"#..#.F#........#",
-	"#..#..###.F##..#",
-	"#.F....#.....F.#",
-	"#......#.......#",
-	"################"
-};
 
 unsigned char endScreen[16][16] = {
 	"################",
@@ -93,26 +73,45 @@ unsigned char startScreen[16][16] = {
 	".#..#.#..#.#..#.",
 };
 
-int ZERO = 0;
+
+volatile unsigned char background[16][16] = {
+	"################",
+	"#.F............#",
+	"#....F.......F.#",
+	"#..#..#####..###",
+	"#..#......#....#",
+	"#..#.F....#.F..#",
+	"#F.#####..###..#",
+	"#.......F......#",
+	"#..............#",
+	"#.F...#F.####..#",
+	"#.....#......F.#",
+	"#..#.F#........#",
+	"#..#..###.F##..#",
+	"#.F....#.....F.#",
+	"#......#.......#",
+	"################"
+};
+
+
 const int BLINK_RANGE = 128;
 const int RENDER_DELAY_US = 10;
-const int FRAME_RATE = 15;			/// RENDER_DELAY_US * FRAME_RATE should be ~250
+const int FRAME_RATE = 20;			/// RENDER_DELAY_US * FRAME_RATE should be ~250
 const int BUZZER_DURATION = 5;
 
 const int dx[4] = {-1, 0, 1,  0};
 const int dy[4] = { 0, 1, 0, -1};
 	
-#define GHOST_COUNT 1	
+#define GHOST_COUNT 1
 
 volatile int foodBlinkState;
 volatile int gameOver;
 volatile int gameWin;
 volatile int buzzerRemainingTime;
 volatile int ghostEnabled;
-
 int px = 13, py = 8;
-int gx[GHOST_COUNT] = {13};
-int gy[GHOST_COUNT] = {5};
+int gx[2] = {13, 1};
+int gy[2] = {5, 13};
 
 
 void reset() {
@@ -149,7 +148,7 @@ void ledMatrixInit()
 
 void controlInit() {
 	// B0, B1
-	DDRB &= 0b11111100;
+	DDRB &= 0b11110100;
 }
 
 void buzzerInit() {
@@ -419,7 +418,7 @@ int main(void)
 	srand(time(NULL));  
     /* Replace with your application code */
 	
-	for (int i=0; i<FRAME_RATE*10; i++) {
+	for (int i=0; i<FRAME_RATE*5; i++) {
 		displayStartScreen();
 	}
 	
@@ -435,7 +434,7 @@ int main(void)
 		makeBoard();
 		for (int i=0; i<FRAME_RATE; i++) {
 			displayBoard();
-			//buzz();
+			buzz();
 		}
 		
 		if (!isFoodLeft())	gameWin = 1;
