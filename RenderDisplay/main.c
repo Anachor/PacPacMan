@@ -10,8 +10,6 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
-#include <stdlib.h>
-
 // For Random Number
 #include <time.h>
 #include <stdlib.h>
@@ -109,14 +107,10 @@ volatile int gameOver;
 volatile int gameWin;
 volatile int buzzerRemainingTime;
 volatile int ghostEnabled;
+
 int px = 13, py = 8;
 int gx[2] = {13, 1};
 int gy[2] = {5, 13};
-
-
-void reset() {
-	PORTC |= 0b11000000;
-}
 
 void ledMatrixInit()
 {
@@ -161,18 +155,20 @@ void setBoardCommon(unsigned char row) {
 	PORTC |= (0x0F & row);
 }
 
-
 void setBoardRed(unsigned char column) {
 	PORTC &= 0b10111111;
 	PORTA &= 0xF0;
 	PORTA |= (0x0F & column);
 }
 
-
 void setBoardGreen(unsigned char column) {
 	PORTC &= 0b01111111;
 	PORTA &= 0x0F;
 	PORTA |= (0xF0 & (column << 4));
+}
+
+void reset() {
+	PORTC |= 0b11000000;
 }
 
 volatile unsigned char board[16][16];
@@ -265,25 +261,6 @@ void buzz() {
 	if (buzzerRemainingTime) buzzerRemainingTime--;
 }
 
-int randomInt(int min, int max)
-{
-	return min + (rand() % (max-min+1));
-}
-
-
-/// 0 = nothing, 1 = blocked, 2 = Pacman Fucked
-int ghostMoveResult(int id, int dir) {
-	int cx = gx[id], cy = gy[id];
-	int nx = cx + dx[dir];
-	int ny = cy + dy[dir];
-	
-	if (background[nx][ny] == '#' || background[nx+1][ny] == '#' ||
-		background[nx][ny+1] == '#' || background[nx+1][ny+1] == '#')		return 0;	
-	
-	if (clash(px, py, nx, ny))	return 2;
-	return 1;
-}
-
 void moveGhost(int id, int dir) {
 	int cx = gx[id], cy = gy[id];
 	int nx = cx + dx[dir];
@@ -301,10 +278,9 @@ void moveGhost(int id, int dir) {
 	}
 }
 
-
 unsigned char dis[16][16];
 unsigned char q[128];
-int frontptr, backptr;
+unsigned char frontptr, backptr;
 const unsigned char INF = 255;
 
 int ghostStrategyShortestPath(int id) {
@@ -405,8 +381,7 @@ int isFoodLeft() {
 }
 
 
-int main(void)
-{
+int main(void) {
 	MCUCSR |= 1 << JTD;
 	MCUCSR |= 1 << JTD;
 
@@ -414,8 +389,6 @@ int main(void)
 	controlInit();
 	buzzerInit();
 	
-	//Random Init
-	srand(time(NULL));  
     /* Replace with your application code */
 	
 	for (int i=0; i<FRAME_RATE*5; i++) {
